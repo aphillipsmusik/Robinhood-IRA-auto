@@ -1,0 +1,5 @@
+.env
+trades.json
+signal.json
+__pycache__/
+*.pyc
