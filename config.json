@@ -2,7 +2,6 @@
   "instrument": "OKLL",
   "current_shares": 29,
   "avg_cost": 9.65,
-  "target_shares": 100,
 
   "trim": {
     "trigger_gain_pct_low": 30,
@@ -14,6 +13,15 @@
   "reload": {
     "pullback_pct_low": 15,
     "pullback_pct_high": 20
+  },
+
+  "technicals": {
+    "tv_symbol": "NASDAQ:OKLL",
+    "poll_interval_seconds": 300,
+    "rsi_overbought": 65,
+    "rsi_oversold": 40,
+    "trim_block_ratings": ["Strong Buy"],
+    "reload_block_ratings": ["Strong Sell"]
   },
 
   "poll_interval_seconds": 60,
