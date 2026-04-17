@@ -1,96 +1,144 @@
 # Robinhood OKLL Automation
 
-Automated trim-and-reload trading strategy for **OKLL** (Defiance 2X Long OKLO ETF) running on a Raspberry Pi with an always-on Chromium browser.
+Automated scale-out/scale-in trading strategy for **OKLL** (Defiance 2X Long OKLO ETF) running on a Raspberry Pi with an always-on Chromium browser, TradingView TA gating, and a live web dashboard.
 
 ---
 
 ## Algorithm Intent
 
-The strategy targets continuous, unlimited accumulation of OKLL shares by recycling profits from short-term overbought spikes back into dip reloads — buying back more shares than were sold each cycle.
+Continuously accumulate OKLL shares by selling into overbought spikes across multiple tiers and buying back more shares than were sold as the price dips.
 
-### Trim (Sell)
-1. Monitor OKLL price continuously against the average cost basis.
-2. When price rises **30–40% above avg cost**, a trim signal is raised.
-3. Before executing, confirm with TradingView technical analysis:
-   - **Block** the trim if the overall TA rating is **"Strong Buy"** (trend may still have room to run), unless RSI ≥ 65 (overbought override).
-4. If confirmed, sell **10–20% of current position** at market.
-5. Log the trade and store the cash proceeds for the reload phase.
+### Scale-Out (Sell Tiers)
 
-### Reload (Buy)
-1. After a trim, track price from the trim level.
-2. When price pulls back **15–20% from the trim price**, a reload signal is raised.
-3. Before executing, confirm with TradingView technical analysis:
-   - **Block** the reload if the overall TA rating is **"Strong Sell"** (trend may continue lower), unless RSI ≤ 40 (oversold override).
-4. If confirmed, buy back using the full cash proceeds from the trim — acquiring **more shares** than were sold (lower price = more shares per dollar).
-5. Net result each cycle: same cash spent, larger share count. Position grows over time.
+As price rises above avg cost, progressively larger slices of the position are sold. Each tier fires once per cycle.
+
+| Gain from avg cost | Sell % of position |
+|---|---|
+| +20% | 5% |
+| +30% | 10% |
+| +40% | 15% |
+| +50% | 20% |
+
+Before each trim: TA is checked — **blocked if overall rating is "Strong Buy"**, unless RSI ≥ 65 (overbought override).
+
+### Scale-In (Buy Tiers)
+
+After a trim, cash accumulates and is redeployed in stages as price pulls back from the peak trim price.
+
+| Pullback from peak | Cash deployed |
+|---|---|
+| −10% | 20% |
+| −15% | 25% |
+| −20% | 25% |
+| −30% | 15% ← reserve |
+| −40% | 15% ← reserve |
+
+70% is deployed on normal dips. 30% is held in reserve for deeper 30–40% drops.
+
+Before each reload: TA is checked — **blocked if overall rating is "Strong Sell"**, unless RSI ≤ 40 (oversold override).
+
+When all buy tiers fire, the cycle resets and scale-out monitoring resumes.
 
 ### No Share Cap
-There is no target share ceiling. The position accumulates indefinitely with each trim/reload cycle.
+There is no target share ceiling. The position grows with each completed cycle.
 
 ---
 
 ## Technical Analysis (TradingView)
 
-A dedicated Chromium tab stays open on the TradingView technicals summary page for OKLL. Every **5 minutes** the system scrapes:
+A dedicated Chromium tab stays open on the TradingView technicals page for OKLL, refreshing every **5 minutes**.
 
-| Signal | Source | Use |
-|---|---|---|
-| Overall rating | Speedometer gauge | Primary gate for trim/reload |
-| RSI | Oscillators table | Overbought/oversold override |
-| MACD action | Oscillators table | Logged with each signal |
-| Moving Average rating | MA summary | Logged with each signal |
+| Signal | Use |
+|---|---|
+| Overall rating | Primary gate for trim/reload |
+| RSI | Overbought/oversold override |
+| MACD | Logged with each signal |
+| Moving Averages | Logged with each signal |
 
-TA data is included in every push notification and in `signal.json`.
+---
+
+## Dashboard
+
+A live web dashboard is served on port **8080** and accessible from any device on the same network.
+
+```
+http://<raspberry-pi-ip>:8080
+```
+
+The dashboard shows:
+- Current price, shares, avg cost, unrealized P&L
+- Scale-out and scale-in tier status (which have fired this cycle)
+- Live TradingView TA ratings with color coding
+- Accumulated cash and peak trim price
+- Full trade history table
+- Auto-refreshes every 30 seconds
 
 ---
 
 ## Architecture
 
 ```
-main.py
-├── session.py       — CDP connect to Chromium:9222, TOTP re-login, 30min heartbeat
-├── poller.py        — Price read loop (every 60s), evaluate_signal with TA gating
-├── technicals.py    — TradingView scraper (every 5min), returns TASignal
-├── trader.py        — Playwright order execution (buy/sell)
-├── logger.py        — Append trade records to trades.json
-├── totp.py          — Generate TOTP codes via pyotp
-└── notifications.py — Push alerts via ntfy.sh or Pushover
+main.py             — signal loop, cycle state, writes state.json
+├── session.py      — CDP connect to Chromium:9222, TOTP re-login, 30min heartbeat
+├── poller.py       — price read loop (60s), scale-out/scale-in evaluation with TA gating
+├── technicals.py   — TradingView scraper (5min), returns TASignal
+├── trader.py       — Playwright order execution (buy/sell)
+├── logger.py       — append trade records to trades.json
+├── totp.py         — generate TOTP codes via pyotp
+└── notifications.py — push alerts via ntfy.sh or Pushover
+
+dashboard.py        — aiohttp web server, serves /api/state + static/index.html
+```
+
+### Service chain (systemd)
+```
+okll-xvfb → okll-chromium → okll-trader
+                                          okll-dashboard (independent)
 ```
 
 ---
 
-## Setup
+## Raspberry Pi Deployment (Ubuntu 24.04 LTS)
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-playwright install chromium
-
-# 2. Configure credentials
-cp .env.example .env
-# Fill in RH_USERNAME, RH_PASSWORD, TOTP_SECRET
-
-# 3. Launch Chromium with remote debugging (do this once, keep running)
-chromium-browser --remote-debugging-port=9222 --no-sandbox &
-
-# 4. Run
-python main.py
+git clone https://github.com/aphillipsmusik/Robinhood-IRA-auto
+cd Robinhood-IRA-auto
+sudo bash deploy/install.sh
+nano .env          # fill in credentials
+make start
+make logs          # watch trader logs
 ```
 
-### config.json reference
+The install script handles all apt dependencies, Python venv, Playwright, and systemd service registration.
+
+### Makefile commands
+
+| Command | Action |
+|---|---|
+| `make start` | Start all 4 services |
+| `make stop` | Stop all services |
+| `make restart` | Restart trader + dashboard |
+| `make status` | Status of all services |
+| `make logs` | Stream trader logs |
+| `make logs-dashboard` | Stream dashboard logs |
+| `make update` | `git pull` + restart |
+
+---
+
+## config.json reference
 
 | Key | Description |
 |---|---|
 | `instrument` | Ticker symbol |
 | `current_shares` | Live position size (auto-updated on trades) |
 | `avg_cost` | Cost basis per share |
-| `trim.trigger_gain_pct_low/high` | Gain % range that triggers a trim |
-| `trim.sell_pct_low/high` | % of position to sell on trim |
-| `reload.pullback_pct_low/high` | % pullback from trim price that triggers reload |
-| `technicals.rsi_overbought` | RSI level that overrides a "Strong Buy" TA block on trim |
-| `technicals.rsi_oversold` | RSI level that overrides a "Strong Sell" TA block on reload |
+| `scale_out.tiers` | Gain thresholds and sell percentages |
+| `scale_in.tiers` | Pullback thresholds and cash deployment percentages |
+| `technicals.rsi_overbought` | RSI that overrides "Strong Buy" block on trim |
+| `technicals.rsi_oversold` | RSI that overrides "Strong Sell" block on reload |
 | `technicals.trim_block_ratings` | TA ratings that block a trim |
 | `technicals.reload_block_ratings` | TA ratings that block a reload |
+| `dashboard_port` | Port for the web dashboard (default 8080) |
 
 ---
 
@@ -98,7 +146,7 @@ python main.py
 
 | File | Purpose |
 |---|---|
-| `main.py` | Entry point |
+| `main.py` | Entry point, cycle state management |
 | `poller.py` | Price monitoring and signal logic |
 | `technicals.py` | TradingView TA scraper |
 | `session.py` | Browser session management |
@@ -106,6 +154,12 @@ python main.py
 | `logger.py` | Trade logging |
 | `totp.py` | 2FA code generation |
 | `notifications.py` | Push notifications |
+| `dashboard.py` | Web dashboard server |
+| `static/index.html` | Dashboard UI |
 | `config.json` | Strategy parameters |
 | `.env` | Credentials (never committed) |
 | `trades.json` | Trade log (auto-created) |
+| `state.json` | Live cycle state (auto-created) |
+| `deploy/install.sh` | Pi setup script |
+| `deploy/*.service` | systemd unit files |
+| `Makefile` | Convenience commands |

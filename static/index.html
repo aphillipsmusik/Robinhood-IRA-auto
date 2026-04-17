@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OKLL Trader Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+    --orange: #ffa657;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; font-size: 14px; padding: 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 12px; }
+  .header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .header .price { font-size: 32px; font-weight: 700; color: var(--blue); }
+  .header .meta { color: var(--muted); font-size: 13px; }
+  .pnl.pos { color: var(--green); }
+  .pnl.neg { color: var(--red); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .tier-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .tier { border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: var(--bg); color: var(--muted); min-width: 80px; text-align: center; }
+  .tier.fired-sell { border-color: var(--green); background: rgba(63,185,80,.12); color: var(--green); }
+  .tier.fired-buy  { border-color: var(--blue);  background: rgba(88,166,255,.12); color: var(--blue); }
+  .tier .label { font-size: 11px; opacity: .7; }
+  .ta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .ta-item { text-align: center; padding: 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); }
+  .ta-item .val { font-size: 18px; font-weight: 700; margin-top: 4px; }
+  .ta-item .lbl { font-size: 11px; color: var(--muted); }
+  .rating-strong-buy  { color: var(--green); }
+  .rating-buy         { color: #7ee787; }
+  .rating-neutral     { color: var(--yellow); }
+  .rating-sell        { color: var(--orange); }
+  .rating-strong-sell { color: var(--red); }
+  .cash-big { font-size: 28px; font-weight: 700; color: var(--yellow); margin-top: 8px; }
+  .peak { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 500; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .trim  { color: var(--orange); }
+  .reload { color: var(--blue); }
+  .footer { margin-top: 16px; font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: rgba(63,185,80,.2); color: var(--green); }
+  .badge-red   { background: rgba(248,81,73,.2);  color: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1><span class="dot"></span>OKLL Trader</h1>
+    <div class="meta" id="subtitle">Loading…</div>
+  </div>
+  <div class="price" id="price">—</div>
+  <div>
+    <div id="pnl" class="pnl">—</div>
+    <div class="meta" id="shares">—</div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>Scale-Out Tiers</h2>
+    <div class="tier-row" id="sell-tiers"></div>
+  </div>
+
+  <div class="card">
+    <h2>Scale-In Tiers</h2>
+    <div class="tier-row" id="buy-tiers"></div>
+  </div>
+
+  <div class="card">
+    <h2>Technical Analysis</h2>
+    <div class="ta-grid" id="ta-grid">
+      <div class="ta-item"><div class="lbl">Overall</div><div class="val" id="ta-overall">—</div></div>
+      <div class="ta-item"><div class="lbl">RSI</div><div class="val" id="ta-rsi">—</div></div>
+      <div class="ta-item"><div class="lbl">MACD</div><div class="val" id="ta-macd">—</div></div>
+      <div class="ta-item"><div class="lbl">Moving Avgs</div><div class="val" id="ta-ma">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Cycle Cash</h2>
+    <div class="cash-big" id="cash">$0.00</div>
+    <div class="peak" id="peak-trim">Peak trim: —</div>
+  </div>
+
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h2>Recent Trades</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Action</th><th>Shares</th><th>Price</th><th>Cash</th></tr></thead>
+    <tbody id="trades-body"><tr><td colspan="5" style="color:var(--muted)">No trades yet</td></tr></tbody>
+  </table>
+</div>
+
+<div class="footer">
+  <span id="updated">—</span>
+  <span>Auto-refreshes every 30s</span>
+</div>
+
+<script>
+const ratingClass = r => ({
+  'Strong Buy': 'rating-strong-buy',
+  'Buy': 'rating-buy',
+  'Neutral': 'rating-neutral',
+  'Sell': 'rating-sell',
+  'Strong Sell': 'rating-strong-sell',
+}[r] || '');
+
+const fmt = (n, dec=2) => n != null ? Number(n).toFixed(dec) : '—';
+const fmtUSD = n => n != null ? '$' + fmt(n) : '—';
+const fmtDate = iso => iso ? new Date(iso).toLocaleString() : '—';
+
+async function refresh() {
+  let s;
+  try {
+    const r = await fetch('/api/state');
+    s = await r.json();
+  } catch(e) {
+    document.getElementById('subtitle').textContent = 'Connection error';
+    return;
+  }
+
+  // Header
+  const price = s.last_price;
+  const avgCost = s.avg_cost;
+  document.getElementById('price').textContent = price != null ? '$' + fmt(price, 4) : '—';
+  document.getElementById('shares').textContent = `${s.current_shares ?? '—'} shares · avg $${fmt(avgCost, 2)}`;
+  document.getElementById('subtitle').textContent = `${s.instrument ?? 'OKLL'} · Last updated ${fmtDate(s.last_updated)}`;
+
+  // P&L
+  const pnlEl = document.getElementById('pnl');
+  if (price != null && avgCost) {
+    const pct = ((price - avgCost) / avgCost * 100).toFixed(2);
+    const usd = ((price - avgCost) * (s.current_shares || 0)).toFixed(2);
+    const sign = pct >= 0 ? '+' : '';
+    pnlEl.textContent = `${sign}${pct}% (${sign}$${usd})`;
+    pnlEl.className = 'pnl ' + (pct >= 0 ? 'pos' : 'neg');
+  }
+
+  // Scale-out tiers
+  const sellEl = document.getElementById('sell-tiers');
+  sellEl.innerHTML = '';
+  (s.scale_out_tiers || []).forEach((t, i) => {
+    const fired = (s.triggered_sell_tiers || []).includes(i);
+    sellEl.innerHTML += `<div class="tier ${fired ? 'fired-sell' : ''}">
+      <div>+${t.gain_pct}%</div>
+      <div class="label">sell ${t.sell_pct}%</div>
+      ${fired ? '<div class="label">✓ fired</div>' : ''}
+    </div>`;
+  });
+
+  // Scale-in tiers
+  const buyEl = document.getElementById('buy-tiers');
+  buyEl.innerHTML = '';
+  (s.scale_in_tiers || []).forEach((t, i) => {
+    const fired = (s.triggered_buy_tiers || []).includes(i);
+    buyEl.innerHTML += `<div class="tier ${fired ? 'fired-buy' : ''}">
+      <div>−${t.pullback_pct}%</div>
+      <div class="label">buy ${t.buy_pct_cash}% cash</div>
+      ${fired ? '<div class="label">✓ fired</div>' : ''}
+    </div>`;
+  });
+
+  // TA
+  const ta = s.ta || {};
+  const overallEl = document.getElementById('ta-overall');
+  overallEl.textContent = ta.overall || '—';
+  overallEl.className = 'val ' + ratingClass(ta.overall);
+
+  const rsiEl = document.getElementById('ta-rsi');
+  const rsi = ta.rsi;
+  rsiEl.textContent = rsi != null ? fmt(rsi, 1) : '—';
+  rsiEl.className = 'val ' + (rsi >= 65 ? 'rating-sell' : rsi <= 40 ? 'rating-buy' : 'rating-neutral');
+
+  document.getElementById('ta-macd').textContent = ta.macd_action || '—';
+  document.getElementById('ta-macd').className = 'val ' + ratingClass(ta.macd_action);
+  document.getElementById('ta-ma').textContent = ta.ma_action || '—';
+  document.getElementById('ta-ma').className = 'val ' + ratingClass(ta.ma_action);
+
+  // Cycle cash
+  document.getElementById('cash').textContent = fmtUSD(s.accumulated_cash);
+  document.getElementById('peak-trim').textContent =
+    s.peak_trim_price != null ? `Peak trim price: $${fmt(s.peak_trim_price, 4)}` : 'No trim this cycle';
+
+  // Trades
+  const tbody = document.getElementById('trades-body');
+  const trades = (s.trades || []).slice().reverse();
+  if (trades.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No trades yet</td></tr>';
+  } else {
+    tbody.innerHTML = trades.map(t => `
+      <tr>
+        <td style="color:var(--muted);white-space:nowrap">${fmtDate(t.timestamp)}</td>
+        <td><span class="badge ${t.action==='trim'?'badge-red':'badge-green'}">${t.action.toUpperCase()}</span></td>
+        <td>${fmt(t.shares, 0)}</td>
+        <td>${fmtUSD(t.price)}</td>
+        <td class="${t.cash >= 0 ? 'trim' : 'reload'}">${t.cash >= 0 ? '+' : ''}${fmtUSD(Math.abs(t.cash))}</td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('updated').textContent = 'Fetched ' + new Date().toLocaleTimeString();
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

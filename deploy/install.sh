@@ -63,15 +63,22 @@ sed "s|__REPO_DIR__|${REPO_DIR}|g; s|__APP_USER__|${APP_USER}|g; s|__VENV_DIR__|
 sed "s|__REPO_DIR__|${REPO_DIR}|g; s|__APP_USER__|${APP_USER}|g; s|__VENV_DIR__|${VENV_DIR}|g" \
     "${REPO_DIR}/deploy/okll-trader.service" > "${SERVICE_DIR}/okll-trader.service"
 
+sed "s|__REPO_DIR__|${REPO_DIR}|g; s|__APP_USER__|${APP_USER}|g; s|__VENV_DIR__|${VENV_DIR}|g" \
+    "${REPO_DIR}/deploy/dashboard.service" > "${SERVICE_DIR}/okll-dashboard.service"
+
 echo "==> Enabling services"
 systemctl daemon-reload
-systemctl enable okll-xvfb.service okll-chromium.service okll-trader.service
+systemctl enable okll-xvfb.service okll-chromium.service okll-trader.service okll-dashboard.service
+
+PI_IP=$(hostname -I | awk '{print $1}')
 
 echo ""
 echo "Installation complete."
 echo ""
 echo "Next steps:"
 echo "  1. Edit ${REPO_DIR}/.env with your Robinhood credentials and TOTP secret"
-echo "  2. Start everything:  sudo systemctl start okll-xvfb okll-chromium okll-trader"
-echo "  3. Watch logs:        journalctl -fu okll-trader"
-echo "  Or use the Makefile:  make start  /  make logs  /  make status"
+echo "  2. Start everything:  make start"
+echo "  3. Watch logs:        make logs"
+echo "  4. Dashboard:         http://${PI_IP}:8080"
+echo ""
+echo "  Or manage individually:  sudo systemctl start okll-xvfb okll-chromium okll-trader okll-dashboard"

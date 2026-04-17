@@ -42,5 +42,7 @@
   },
 
   "credentials_path": ".env",
-  "trades_log": "trades.json"
+  "trades_log": "trades.json",
+  "state_file": "state.json",
+  "dashboard_port": 8080
 }

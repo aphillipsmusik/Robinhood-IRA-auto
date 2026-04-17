@@ -1,17 +1,12 @@
 """
 Main entry point: runs scale-out/scale-in signal loop with TA gating and heartbeat.
-
-Cycle state:
-  triggered_sell_tiers — which scale-out tiers have fired this cycle
-  triggered_buy_tiers  — which scale-in tiers have fired this cycle
-  accumulated_cash     — total cash from all scale-out trims this cycle
-  peak_trim_price      — highest trim price (used as pullback reference)
-
-Cycle resets when the final scale-in tier fires (all cash redeployed).
+Persists cycle state to state.json so the dashboard and restarts stay in sync.
 """
 import asyncio
 import json
+import os
 import time
+from datetime import datetime, timezone
 
 from session import connect, ensure_session, heartbeat_loop
 from poller import get_price, evaluate_signal, POLL_INTERVAL, HEARTBEAT_INTERVAL, TA_POLL_INTERVAL, BUY_TIERS
@@ -20,6 +15,58 @@ from trader import execute_trim, execute_reload
 from notifications import notify
 
 CONFIG = json.load(open("config.json"))
+STATE_FILE = CONFIG.get("state_file", "state.json")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _load_state() -> dict:
+    if os.path.exists(STATE_FILE):
+        try:
+            return json.load(open(STATE_FILE))
+        except Exception:
+            pass
+    return {
+        "triggered_sell_tiers": [],
+        "triggered_buy_tiers": [],
+        "accumulated_cash": 0.0,
+        "peak_trim_price": None,
+    }
+
+
+def _save_state(
+    triggered_sell_tiers: set,
+    triggered_buy_tiers: set,
+    accumulated_cash: float,
+    peak_trim_price: float | None,
+    price: float | None,
+    ta: TASignal,
+) -> None:
+    cfg = json.load(open("config.json"))
+    state = {
+        "instrument": cfg["instrument"],
+        "current_shares": cfg.get("current_shares", 0),
+        "avg_cost": cfg.get("avg_cost", 0),
+        "last_price": price,
+        "last_price_time": _now_iso(),
+        "triggered_sell_tiers": sorted(triggered_sell_tiers),
+        "triggered_buy_tiers": sorted(triggered_buy_tiers),
+        "accumulated_cash": round(accumulated_cash, 4),
+        "peak_trim_price": peak_trim_price,
+        "ta": {
+            "overall": ta.overall,
+            "rsi": ta.rsi,
+            "macd_action": ta.macd_action,
+            "ma_action": ta.ma_action,
+        },
+        "scale_out_tiers": cfg["scale_out"]["tiers"],
+        "scale_in_tiers": cfg["scale_in"]["tiers"],
+        "last_updated": _now_iso(),
+    }
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
 
 
 def _reset_cycle() -> tuple[set, set, float, None]:
@@ -27,10 +74,15 @@ def _reset_cycle() -> tuple[set, set, float, None]:
 
 
 async def signal_loop(context) -> None:
+    saved = _load_state()
+    triggered_sell_tiers = set(saved.get("triggered_sell_tiers", []))
+    triggered_buy_tiers = set(saved.get("triggered_buy_tiers", []))
+    accumulated_cash = saved.get("accumulated_cash", 0.0)
+    peak_trim_price = saved.get("peak_trim_price")
+
     page = await ensure_session(context)
     ta: TASignal = TASignal()
     last_ta_fetch = 0.0
-    triggered_sell_tiers, triggered_buy_tiers, accumulated_cash, peak_trim_price = _reset_cycle()
 
     while True:
         try:
@@ -56,9 +108,7 @@ async def signal_loop(context) -> None:
 
                     if signal == "trim":
                         tier_idx = next(
-                            i for i, t in enumerate(
-                                [{"gain": x["gain_pct"]/100} for x in CONFIG["scale_out"]["tiers"]]
-                            )
+                            i for i, _ in enumerate(CONFIG["scale_out"]["tiers"])
                             if i not in triggered_sell_tiers
                         )
                         cash = await execute_trim(context, price, pct)
@@ -69,7 +119,7 @@ async def signal_loop(context) -> None:
 
                     elif signal == "reload":
                         tier_idx = next(
-                            i for i, t in enumerate(BUY_TIERS)
+                            i for i, _ in enumerate(BUY_TIERS)
                             if i not in triggered_buy_tiers
                         )
                         cash_for_tier = accumulated_cash * pct
@@ -80,6 +130,8 @@ async def signal_loop(context) -> None:
                         if len(triggered_buy_tiers) >= len(BUY_TIERS):
                             triggered_sell_tiers, triggered_buy_tiers, accumulated_cash, peak_trim_price = _reset_cycle()
                             await notify("Cycle complete — all scale-in tiers fired, resetting for next cycle")
+
+                _save_state(triggered_sell_tiers, triggered_buy_tiers, accumulated_cash, peak_trim_price, price, ta)
 
         except Exception as e:
             print(f"[main] error: {e}")
