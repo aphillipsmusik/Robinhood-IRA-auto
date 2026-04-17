@@ -17,7 +17,8 @@
       {"pullback_pct": 10, "buy_pct_cash": 20},
       {"pullback_pct": 15, "buy_pct_cash": 25},
       {"pullback_pct": 20, "buy_pct_cash": 25},
-      {"pullback_pct": 50, "buy_pct_cash": 30}
+      {"pullback_pct": 30, "buy_pct_cash": 15},
+      {"pullback_pct": 50, "buy_pct_cash": 15}
     ]
   },
 
