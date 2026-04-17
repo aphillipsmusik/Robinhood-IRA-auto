@@ -3,16 +3,21 @@
   "current_shares": 29,
   "avg_cost": 9.65,
 
-  "trim": {
-    "trigger_gain_pct_low": 30,
-    "trigger_gain_pct_high": 40,
-    "sell_pct_low": 10,
-    "sell_pct_high": 20
+  "scale_out": {
+    "tiers": [
+      {"gain_pct": 20, "sell_pct": 5},
+      {"gain_pct": 30, "sell_pct": 10},
+      {"gain_pct": 40, "sell_pct": 15},
+      {"gain_pct": 50, "sell_pct": 20}
+    ]
   },
 
-  "reload": {
-    "pullback_pct_low": 15,
-    "pullback_pct_high": 20
+  "scale_in": {
+    "tiers": [
+      {"pullback_pct": 10, "buy_pct_cash": 25},
+      {"pullback_pct": 15, "buy_pct_cash": 35},
+      {"pullback_pct": 20, "buy_pct_cash": 40}
+    ]
   },
 
   "technicals": {

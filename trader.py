@@ -1,7 +1,6 @@
 """
-Trader: executes trim and reload orders on Robinhood via CDP/Playwright.
+Trader: executes scale-out trim and scale-in reload orders via CDP/Playwright.
 """
-import asyncio
 import json
 import re
 from playwright.async_api import BrowserContext, Page
@@ -12,8 +11,6 @@ from notifications import notify
 
 CONFIG = json.load(open("config.json"))
 SYMBOL = CONFIG["instrument"]
-SELL_PCT_LOW = CONFIG["trim"]["sell_pct_low"] / 100
-SELL_PCT_HIGH = CONFIG["trim"]["sell_pct_high"] / 100
 
 
 async def _nav_to_stock(page: Page) -> None:
@@ -33,74 +30,68 @@ async def _get_shares_owned(page: Page) -> float:
         return 0.0
 
 
-async def _place_order(page: Page, side: str, shares: float) -> float:
-    """Click Buy or Sell, enter share count, submit. Returns fill price."""
+async def _place_order(page: Page, side: str, shares: int) -> float:
+    """Submit a market order. Returns fill price (0.0 if unconfirmed)."""
     await _nav_to_stock(page)
 
-    btn = page.locator(f'button:has-text("{side.capitalize()}")')
-    await btn.click(timeout=10000)
+    await page.locator(f'button:has-text("{side.capitalize()}")').click(timeout=10000)
 
-    # Switch to "Shares" order type if needed
     try:
-        shares_tab = page.locator('button:has-text("Shares"), [data-testid="order-type-shares"]')
-        await shares_tab.click(timeout=5000)
+        await page.locator('button:has-text("Shares"), [data-testid="order-type-shares"]').click(timeout=5000)
     except Exception:
         pass
 
-    qty_input = page.locator('input[aria-label*="Shares"], input[placeholder*="0"], input[name*="quantity"]').first
-    await qty_input.fill(str(int(shares)))
+    qty = page.locator('input[aria-label*="Shares"], input[placeholder*="0"], input[name*="quantity"]').first
+    await qty.fill(str(shares))
 
-    review_btn = page.locator('button:has-text("Review"), button:has-text("Review Order")')
-    await review_btn.click(timeout=10000)
-
-    submit_btn = page.locator('button:has-text("Submit"), button:has-text("Place Order")')
-    await submit_btn.click(timeout=10000)
-
+    await page.locator('button:has-text("Review"), button:has-text("Review Order")').click(timeout=10000)
+    await page.locator('button:has-text("Submit"), button:has-text("Place Order")').click(timeout=10000)
     await page.wait_for_timeout(3000)
 
-    # Try to scrape confirmed fill price
     try:
-        price_el = page.locator('[data-testid="confirmation-price"], span:has-text("$")').first
-        text = await price_el.inner_text(timeout=5000)
+        text = await page.locator('[data-testid="confirmation-price"], span:has-text("$")').first.inner_text(timeout=5000)
         return float(re.sub(r"[^\d.]", "", text))
     except Exception:
         return 0.0
 
 
-async def execute_trim(context: BrowserContext, current_price: float) -> None:
+async def execute_trim(context: BrowserContext, current_price: float, sell_pct: float) -> float:
+    """Sell sell_pct of current position. Returns cash received."""
     page = await ensure_session(context)
-    shares_owned = await _get_shares_owned(page) or CONFIG["current_shares"]
+    cfg = json.load(open("config.json"))
+    shares_owned = await _get_shares_owned(page) or cfg["current_shares"]
+    sell_shares = max(1, round(shares_owned * sell_pct))
 
-    sell_shares = round(shares_owned * ((SELL_PCT_LOW + SELL_PCT_HIGH) / 2))
-    sell_shares = max(1, sell_shares)
-
-    await notify(f"TRIM: selling {sell_shares} shares of {SYMBOL} at ~${current_price:.4f}")
+    await notify(f"SCALE-OUT: selling {sell_shares} shares ({sell_pct*100:.0f}%) at ~${current_price:.4f}")
     fill_price = await _place_order(page, "sell", sell_shares)
     cash = sell_shares * (fill_price or current_price)
 
     log_trade("trim", sell_shares, fill_price or current_price, cash)
-    await notify(f"TRIM done: {sell_shares} shares @ ${fill_price:.4f}, cash=${cash:.2f}")
+    await notify(f"TRIM done: {sell_shares} shares @ ${fill_price:.4f} → ${cash:.2f} cash")
 
-    CONFIG["current_shares"] = shares_owned - sell_shares
+    cfg["current_shares"] = shares_owned - sell_shares
     with open("config.json", "w") as f:
-        json.dump(CONFIG, f, indent=2)
+        json.dump(cfg, f, indent=2)
+
+    return cash
 
 
-async def execute_reload(context: BrowserContext, current_price: float, cash_available: float) -> None:
+async def execute_reload(context: BrowserContext, current_price: float, cash_to_spend: float) -> None:
+    """Buy as many shares as cash_to_spend allows at current_price."""
     page = await ensure_session(context)
-
-    buy_shares = int(cash_available / current_price)
+    buy_shares = int(cash_to_spend / current_price)
     if buy_shares < 1:
-        await notify("RELOAD skipped — insufficient cash")
+        await notify("SCALE-IN skipped — insufficient cash for this tier")
         return
 
-    await notify(f"RELOAD: buying {buy_shares} shares of {SYMBOL} at ~${current_price:.4f}")
+    await notify(f"SCALE-IN: buying {buy_shares} shares at ~${current_price:.4f} (${cash_to_spend:.2f} cash)")
     fill_price = await _place_order(page, "buy", buy_shares)
     spent = buy_shares * (fill_price or current_price)
 
     log_trade("reload", buy_shares, fill_price or current_price, -spent)
     await notify(f"RELOAD done: {buy_shares} shares @ ${fill_price:.4f}, spent=${spent:.2f}")
 
-    CONFIG["current_shares"] = CONFIG.get("current_shares", 0) + buy_shares
+    cfg = json.load(open("config.json"))
+    cfg["current_shares"] = cfg.get("current_shares", 0) + buy_shares
     with open("config.json", "w") as f:
-        json.dump(CONFIG, f, indent=2)
+        json.dump(cfg, f, indent=2)
