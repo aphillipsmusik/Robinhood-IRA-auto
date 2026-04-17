@@ -14,9 +14,10 @@
 
   "scale_in": {
     "tiers": [
-      {"pullback_pct": 10, "buy_pct_cash": 25},
-      {"pullback_pct": 15, "buy_pct_cash": 35},
-      {"pullback_pct": 20, "buy_pct_cash": 40}
+      {"pullback_pct": 10, "buy_pct_cash": 20},
+      {"pullback_pct": 15, "buy_pct_cash": 25},
+      {"pullback_pct": 20, "buy_pct_cash": 25},
+      {"pullback_pct": 50, "buy_pct_cash": 30}
     ]
   },
 
