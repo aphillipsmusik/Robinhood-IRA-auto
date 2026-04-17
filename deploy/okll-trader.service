@@ -1,0 +1,22 @@
+[Unit]
+Description=Robinhood OKLL Automated Trader
+After=okll-chromium.service network-online.target
+Requires=okll-chromium.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=__REPO_DIR__/.env
+Environment=CDP_URL=http://localhost:9222
+ExecStartPre=/bin/sleep 5
+ExecStart=__VENV_DIR__/bin/python main.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=okll-trader
+
+[Install]
+WantedBy=multi-user.target
