@@ -1,5 +1,6 @@
 .env
 trades.json
 signal.json
+state.json
 __pycache__/
 *.pyc

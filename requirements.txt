@@ -2,3 +2,4 @@ playwright
 pyotp
 python-dotenv
 httpx
+aiohttp
