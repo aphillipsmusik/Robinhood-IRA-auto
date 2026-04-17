@@ -1,0 +1,25 @@
+[Unit]
+Description=Chromium Browser (Remote Debugging for OKLL Trader)
+After=okll-xvfb.service
+Requires=okll-xvfb.service
+
+[Service]
+Type=simple
+User=__APP_USER__
+Environment=DISPLAY=:99
+Environment=HOME=/home/__APP_USER__
+ExecStart=/usr/bin/chromium-browser \
+    --remote-debugging-port=9222 \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    --disable-gpu \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-extensions \
+    --user-data-dir=/home/__APP_USER__/.chromium-trading \
+    https://robinhood.com
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
