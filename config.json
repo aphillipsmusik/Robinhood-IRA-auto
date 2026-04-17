@@ -1,0 +1,31 @@
+{
+  "instrument": "OKLL",
+  "current_shares": 29,
+  "avg_cost": 9.65,
+  "target_shares": 100,
+
+  "trim": {
+    "trigger_gain_pct_low": 30,
+    "trigger_gain_pct_high": 40,
+    "sell_pct_low": 10,
+    "sell_pct_high": 20
+  },
+
+  "reload": {
+    "pullback_pct_low": 15,
+    "pullback_pct_high": 20
+  },
+
+  "poll_interval_seconds": 60,
+  "heartbeat_interval_seconds": 1800,
+
+  "cdp_url": "http://localhost:9222",
+
+  "notifications": {
+    "provider": "ntfy",
+    "ntfy_topic": "robinhood-okll"
+  },
+
+  "credentials_path": ".env",
+  "trades_log": "trades.json"
+}

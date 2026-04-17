@@ -1,0 +1,4 @@
+playwright
+pyotp
+python-dotenv
+httpx
